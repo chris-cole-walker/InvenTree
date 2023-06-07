@@ -88,6 +88,9 @@
             {% endif %}
             <li><a class='dropdown-item' href='#' id='stock-move' title='{% trans "Transfer stock" %}'><span class='fas fa-exchange-alt icon-blue'></span> {% trans "Transfer stock" %}</a></li>
             {% endif %}
+            {% if item.part.assembly %}
+            <li><a class='dropdown-item' href='#' id='stock-expand' title='{% trans "Expand stock" %}'><span class='fas fa-object-ungroup icon-orange'></span>{% trans "Expand stock" %}</a></li>
+            {% endif %}
             {% if item.part.salable and not item.customer %}
             <li><a class='dropdown-item' href='#' id='stock-assign-to-customer' title='{% trans "Assign to customer" %}'><span class='fas fa-user-tie'></span> {% trans "Assign to customer" %}</a></li>
             {% endif %}
@@ -686,6 +689,10 @@ $("#stock-count").click(function() {
 
 $('#stock-remove').click(function() {
     itemAdjust('take');
+});
+
+$("#stock-expand").click(function() {
+itemAdjust('expand');
 });
 
 {% endif %}

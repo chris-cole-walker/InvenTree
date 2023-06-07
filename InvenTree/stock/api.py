@@ -206,6 +206,12 @@ class StockMerge(CreateAPI):
         ctx = super().get_serializer_context()
         ctx['request'] = self.request
         return ctx
+    
+
+class StockExpand(StockAdjustView):
+    """Endpoint for expanding a stock item to each of its BOM parts."""
+
+    serializer_class = StockSerializers.StockExpandSerializer
 
 
 class StockLocationList(APIDownloadMixin, ListCreateAPI):
@@ -1420,7 +1426,7 @@ stock_api_urls = [
     re_path(r'^remove/', StockRemove.as_view(), name='api-stock-remove'),
     re_path(r'^transfer/', StockTransfer.as_view(), name='api-stock-transfer'),
     re_path(r'^assign/', StockAssign.as_view(), name='api-stock-assign'),
-    re_path(r'^merge/', StockMerge.as_view(), name='api-stock-merge'),
+    re_path(r'^merge/', StockMerge.as_view(), name='api-stock-merge'), re_path(r'^expand/', StockExpand.as_view(), name='api-stock-expand'),
 
     # StockItemAttachment API endpoints
     re_path(r'^attachment/', include([
