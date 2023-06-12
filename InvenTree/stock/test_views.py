@@ -37,6 +37,28 @@ class StockListTest(StockViewTestCase):
 class StockDetailTest(StockViewTestCase):
     """Unit test for the 'stock detail' page"""
 
+    def test_assembly_info(self):
+        """Test that assembly only info is rendered"""
+        url = reverse('stock-item-detail', kwargs={'pk': 101})
+
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        html = str(response.content)
+
+        act = "id=\\\'stock-expand\\\' title=\\\'Expand stock\\\'"
+        self.assertNotIn(act, html)
+
+        # Give the user all the permissions
+        self.assignRole('stock.add')
+        self.assignRole('stock.change')
+        self.assignRole('stock.delete')
+
+        response = self.client.get(url)
+        html = str(response.content)
+
+        self.assertIn(act, html)
+
     def test_basic_info(self):
         """Test that basic stock item info is rendered"""
 

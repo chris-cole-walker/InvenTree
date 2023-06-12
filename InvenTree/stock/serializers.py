@@ -1018,205 +1018,6 @@ class StockMergeSerializer(serializers.Serializer):
         )
 
 
-class StockExpandItemSerializer(serializers.Serializer):
-    """Serializer for a single StockItem within the StockExpandSerializer class.
-
-    Here, the individual StockItem is being checked for expand compatibility.
-    """
-
-    class Meta:
-        """Metaclass options."""
-
-        fields = [
-            'item',
-        ]
-
-    item = serializers.PrimaryKeyRelatedField(
-        queryset=StockItem.objects.all(),
-        many=False,
-        allow_null=False,
-        required=True,
-        label=_('Stock Item'),
-    )
-
-    def validate_item(self, item):
-        """Make sure item can be expanded."""
-        # Check that the stock item is able to be expanded.
-        print('Validating')
-        print(item.part.name)
-        if not item.part.assembly:
-            raise ValidationError(_("A stock item can only be expanded if it is an assembly."))
-        if item.part.bom_count == 0:
-            raise ValidationError(_("A stock item can only be expanded if it has items in its BOM."))
-
-        return item
-
-
-class StockExpandSerializer(StockAdjustmentSerializer):
-    """Serializer for splitting a stock item to stock item(s)."""
-
-    class Meta:
-        """Metaclass options."""
-
-        fields = [
-            'items',
-            'location',
-            'notes'
-        ]
-
-    items = StockExpandItemSerializer(
-        many=True,
-        required=True,
-    )
-
-    location = serializers.PrimaryKeyRelatedField(
-        queryset=StockLocation.objects.all(),
-        many=False,
-        required=True,
-        allow_null=False,
-        label=_('Location'),
-        help_text=_('Destination stock location'),
-    )
-
-    notes = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        label=_('Notes'),
-        help_text=_('Stock expanding notes'),
-    )
-
-    # def validate(self, data):
-    #     """Make sure items are provided."""
-    #     super().validate(data)
-
-    #     items = data.get('items', [])
-
-    #     if len(items) == 0:
-    #         raise ValidationError(_("A list of stock items must be provided"))
-
-    #     if any(not stock['item'].part.assembly for stock in items):
-    #         raise ValidationError(_("Only assemblies can be expanded"))
-
-    #     if any(stock['item'].part.bom_count == 0 for stock in items):
-    #         raise ValidationError(_("At least one part must be added to the BOM"))
-
-    #     return data
-
-    def save(self):
-        """Add stock."""
-        fields_to_transfer = [
-            'location',
-            'notes', 'owner', 'owner_id', 'packaging',
-            'purchase_order',
-            'purchase_order_id',
-            'purchase_price',
-            'purchase_price_currency',
-        ]
-        request = self.context['request']
-
-        data = self.validated_data
-        notes = data.get('notes', '')
-        print(notes)
-
-        print(str(data))
-
-        print('')
-        print('Finding base part for this stock item.')
-        with transaction.atomic():
-            for item in data['items']:
-                print(item)
-                if 'pk' in item:
-                    stock_item = item['pk']
-                    quantity = item['quantity']
-
-                elif 'item' in item:
-                    stock_item = item['item']
-                    quantity = stock_item.quantity
-
-                data_to_transfer = {}
-                for field in fields_to_transfer:
-                    data_to_transfer[field] = getattr(stock_item, field)
-
-                pack_purchase_price = stock_item.purchase_price
-
-                print(f'Stock item is based on part {stock_item.part_id} {stock_item.part.name} and {quantity} are being expanded')
-                base_part = stock_item.part
-                print(f'{base_part.bom_count} items in BOM')
-
-                stock_expand = {}
-
-                for part in base_part.get_bom_items():
-                    # print(dir(part))
-                    print(f'{part.sub_part} {part.quantity} in the pack')
-                    stock_expand[part.sub_part] = {
-                        'name': part.sub_part.name,
-                        'quant': part.quantity
-                    }
-
-                total_parts_per_pack = sum(
-                    [e['quant'] for e in stock_expand.values()]
-                )
-                pack_price_per_part = pack_purchase_price / total_parts_per_pack
-
-                data_to_transfer['purchase_price'] = pack_price_per_part
-                data_to_transfer['notes'] = notes
-
-                print(f'{pack_purchase_price}/pack --> {pack_price_per_part}/part ({total_parts_per_pack:.1f} parts)')
-
-                for k, v in data_to_transfer.items():
-                    print(f'{k}: {v}')
-
-                for part_to_stock, meta in stock_expand.items():
-                    print(
-                        f"Creating a stock of {meta['quant'] * quantity} for {part_to_stock}"
-                    )
-                    s = StockItem(
-                        part=part_to_stock,
-                        quantity=meta['quant'] * quantity,
-                        **data_to_transfer
-                    )
-                    print(s)
-                    s.save()
-
-                print(f'Modifying {quantity} of {stock_item}')
-                stock_item.take_stock(
-                    quantity, request.user, notes=f'Stock from the expansion of {stock_item.part.name}'
-                )
-                stock_item.save()
-
-            # with indent(2, '>>'):
-            #     for field in dir(stock_item):
-            #         if field[0] == '_':
-            #             continue
-            #         elif field[:3] == 'get':
-            #             try:
-            #                 puts(colored.cyan(f'{field}: {getattr(stock_item, field)()}'))
-            #             except Exception as err:
-            #                 puts(colored.red(f'{field}: {err}'))
-            #         else:
-            #             try:
-            #                 puts(
-            #                     colored.yellow(
-            #                     f'{field}: {getattr(stock_item, field)}'
-            #                     )
-            #                 )
-            #             except Exception as err:
-            #                 puts(colored.red(f'{field}: {err}'))
-
-        # with transaction.atomic():
-        #     for item in data['items']:
-
-        #         stock_item = item['pk']
-        #         quantity = item['quantity']
-
-        #         stock_item.add_stock(
-        #             quantity,
-        #             request.user,
-        #             notes=notes
-        #         )
-
-
-
 class StockAdjustmentItemSerializer(serializers.Serializer):
     """Serializer for a single StockItem within a stock adjument request.
 
@@ -1390,6 +1191,69 @@ class StockTransferSerializer(StockAdjustmentSerializer):
                 quantity = item['quantity']
 
                 stock_item.move(
+                    location,
+                    notes,
+                    request.user,
+                    quantity=quantity
+                )
+
+
+class StockExpandSerializer(StockAdjustmentSerializer):
+    """Serializer for expanding a stock item to stock item(s) based on a BOM."""
+
+    class Meta:
+        """Metaclass options."""
+
+        fields = [
+            'items',
+            'notes',
+            'location',
+        ]
+
+    location = serializers.PrimaryKeyRelatedField(
+        queryset=StockLocation.objects.all(),
+        many=False,
+        required=True,
+        allow_null=False,
+        label=_('Location'),
+        help_text=_('Destination stock location'),
+    )
+
+    def validate(self, data):
+        """Make sure items are provided and they can be expanded."""
+        super().validate(data)
+
+        items = data.get('items', [])
+
+        for item in items:
+
+            if not item['pk'].part.assembly:
+                raise ValidationError(_("Only assemblies can be expanded"))
+
+            if item['pk'].part.bom_count == 0:
+                raise ValidationError(_("At least one part must be added to the BOM for expansion"))
+
+            item['pk'].can_expand(raise_error=True)
+
+        return data
+
+    def save(self):
+        """Expand stock."""
+        request = self.context['request']
+
+        data = self.validated_data
+
+        items = data['items']
+        notes = data.get('notes', '')
+        location = data['location']
+
+        with transaction.atomic():
+            for item in items:
+
+                stock_item = item['pk']
+                quantity = item['quantity']
+
+                stock_item.expand(
                     location,
                     notes,
                     request.user,

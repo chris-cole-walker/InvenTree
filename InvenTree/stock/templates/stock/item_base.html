@@ -80,6 +80,9 @@
             <li><a class='dropdown-item' href='#' id='stock-count' title='{% trans "Count stock" %}'><span class='fas fa-check-circle icon-green'></span> {% trans "Count stock" %}</a></li>
             {% if not item.customer %}
             <li><a class='dropdown-item' href='#' id='stock-add' title='{% trans "Add stock" %}'><span class='fas fa-plus-circle icon-green'></span> {% trans "Add stock" %}</a></li>
+            {% if item.part.assembly %}
+            <li><a class='dropdown-item' href='#' id='stock-expand' title='{% trans "Expand stock" %}'><span class='fas fa-object-ungroup icon-orange'></span> {% trans "Expand stock" %}</a></li>
+            {% endif %}
             <li><a class='dropdown-item' href='#' id='stock-remove' title='{% trans "Remove stock" %}'><span class='fas fa-minus-circle icon-red'></span> {% trans "Remove stock" %}</a></li>
             {% endif %}
             {% if item.part.trackable %}
@@ -87,9 +90,6 @@
             {% endif %}
             {% endif %}
             <li><a class='dropdown-item' href='#' id='stock-move' title='{% trans "Transfer stock" %}'><span class='fas fa-exchange-alt icon-blue'></span> {% trans "Transfer stock" %}</a></li>
-            {% endif %}
-            {% if item.part.assembly %}
-            <li><a class='dropdown-item' href='#' id='stock-expand' title='{% trans "Expand stock" %}'><span class='fas fa-object-ungroup icon-orange'></span>{% trans "Expand stock" %}</a></li>
             {% endif %}
             {% if item.part.salable and not item.customer %}
             <li><a class='dropdown-item' href='#' id='stock-assign-to-customer' title='{% trans "Assign to customer" %}'><span class='fas fa-user-tie'></span> {% trans "Assign to customer" %}</a></li>
@@ -691,9 +691,11 @@ $('#stock-remove').click(function() {
     itemAdjust('take');
 });
 
+{% if item.part.assembly %}
 $("#stock-expand").click(function() {
 itemAdjust('expand');
 });
+{% endif %}
 
 {% endif %}
 

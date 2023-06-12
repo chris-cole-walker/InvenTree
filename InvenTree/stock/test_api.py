@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from django.urls import reverse
 
 import tablib
+from clint.textui import colored, indent, puts
 from djmoney.money import Money
 from rest_framework import status
 
@@ -1693,6 +1694,312 @@ class StockMergeTest(StockAPITestCase):
 
         # Total number of stock items has been reduced!
         self.assertEqual(StockItem.objects.filter(part=self.part).count(), n - 2)
+
+
+class StockExpandTest(StockAPITestCase):
+    """Unit tests for expanding stock items via the API."""
+
+    URL = reverse('api-stock-expand')
+
+    @classmethod
+    def setUpTestData(cls):
+        """Setup for all tests."""
+
+        super().setUpTestData()
+
+        cls.part_1 = Part.objects.create(
+            name='A Pack',
+            description='A pack of various sub_parts.',
+            assembly=True
+        )
+
+        cls.part_2 = Part.objects.create(
+            name='Another Pack',
+            description='Another pack with some crossover.',
+            assembly=True
+        )
+
+        cls.sub_parts = []
+        sub_size = ['A', 'B', 'C', 'D']
+        cls.sub_quants = [20, 10, 40, 100]
+        puts(colored.yellow('creating sub parts'))
+        for size, quant in zip(sub_size, cls.sub_quants):
+            sub_part = Part.objects.create(
+                name=size,
+                description='Sub_part that makes up part of a pack'
+            )
+            cls.sub_parts.append(sub_part)
+            sub_part.save()
+            with indent(2):
+                puts(colored.red(f'Created {sub_part.name} with a quantity of {quant}'))
+            b = part.models.BomItem(
+                part=cls.part_1,
+                sub_part=sub_part,
+                quantity=quant
+            )
+            b.save()
+
+        cls.E = Part.objects.create(
+            name='E',
+            description='Sub_part that makes up part of a pack'
+        )
+        cls.E_quant = 10
+        b = part.models.BomItem(
+            part=cls.part_2,
+            sub_part=cls.sub_parts[0],
+            quantity=cls.sub_quants[0]
+        )
+        b.save()
+        b = part.models.BomItem(
+            part=cls.part_2,
+            sub_part=cls.E,
+            quantity=cls.E_quant
+        )
+        b.save()
+        cls.part_1.save()
+        cls.part_2.save()
+        cls.part_1.refresh_from_db()
+        cls.part_2.refresh_from_db()
+
+        puts(colored.yellow('Checking BOM was created.'))
+        with indent(2):
+            puts(colored.yellow(f'{cls.part_1.bom_count} item(s) in BOM for {cls.part_1}'))
+            puts(colored.yellow(f'{cls.part_2.bom_count} item(s) in BOM for {cls.part_2}'))
+
+        cls.part_3 = Part.objects.create(
+            name='Not an Assembly',
+            description='A part that is not an assembly',
+            assembly=False
+        )
+
+        cls.part_4 = Part.objects.create(
+            name='Empty Pack',
+            description='A part that is an assembly but has not BOM',
+            assembly=True
+        )
+
+        cls.loc = StockLocation.objects.get(pk=1)
+
+        cls.item_1 = StockItem.objects.create(
+            part=cls.part_1,
+            quantity=100,
+        )
+
+        cls.item_2 = StockItem.objects.create(
+            part=cls.part_2,
+            quantity=0,
+        )
+
+        cls.item_3 = StockItem.objects.create(
+            part=cls.part_3,
+            quantity=1,
+        )
+
+        cls.item_4 = StockItem.objects.create(
+            part=cls.part_4,
+            quantity=1,
+        )
+
+    def test_missing_data(self):
+        """Test responses which are missing required data."""
+        # Post completely empty
+        data = self.post(
+            self.URL,
+            {},
+            expected_code=400
+        ).data
+
+        self.assertIn('This field is required', str(data['items']))
+        self.assertIn('This field is required', str(data['location']))
+
+        # Post with a location and empty items list
+        data = self.post(
+            self.URL,
+            {
+                'items': [],
+                'location': 1,
+            },
+            expected_code=400
+        ).data
+
+        self.assertIn(
+            'A list of stock items must be provided', str(data)
+        )
+
+        # Post with a location and item but no quantity
+        data = self.post(
+            self.URL,
+            {
+                'items': [{'pk': self.item_1.pk}],
+                'location': 1,
+            },
+            expected_code=400
+        ).data
+
+        self.assertIn(
+            'This field is required', str(data)
+        )
+
+    def test_invalid_data(self):
+        """Test responses which have invalid data."""
+        # Post a component, not an assembly
+        data = self.post(
+            self.URL,
+            {
+                'items': [{'pk': self.item_3.pk, 'quantity': 1}],
+                'location': 1,
+            },
+            expected_code=400
+        ).data
+
+        self.assertIn(
+            'Only assemblies can be expanded', str(data)
+        )
+
+        # Post an assembly with no BOM items
+        data = self.post(
+            self.URL,
+            {
+                'items': [
+                    {'pk': self.item_4.pk, 'quantity': 1},
+                    {'pk': self.item_1.pk, 'quantity': 1}
+                ],
+                'location': 1,
+            },
+            expected_code=400
+        ).data
+
+        self.assertIn(
+            'At least one part must be added to the BOM for expansion',
+            str(data)
+        )
+
+        # Post an stock item with no stock
+        data = self.post(
+            self.URL,
+            {
+                'items': [{'pk': self.item_2.pk, 'quantity': 1}],
+                'location': 1,
+            },
+            expected_code=400
+        ).data
+
+        self.assertIn(
+            'StockItem cannot be expanded as it is not in stock',
+            str(data)
+        )
+
+    def test_valid_expand_single(self):
+        """Test a valid expansion one stock item."""
+
+        # First, verify stock levels of sub_parts is zero
+        n_packs = self.part_1.total_stock
+        puts(colored.yellow(f'There are initially {n_packs}'))
+
+        for sub_part in self.sub_parts:
+            n = sub_part.total_stock
+            self.assertEqual(n, 0)
+
+        # post with zero, should do nothing
+        self.post(
+            self.URL,
+            {
+                'items': [
+                    {
+                        'pk': self.item_1.pk,
+                        'quantity': 0
+                    }
+                ],
+                'location': 1,
+            },
+            expected_code=201
+        )
+        self.assertEqual(self.part_1.total_stock, n_packs)
+
+        # Check expansion of one or more stock items
+        attempts = [1, 3, 5]
+        for i, to_expand in enumerate(attempts):
+            payload = {
+                'items': [
+                    {
+                        'pk': self.item_1.pk,
+                        'quantity': to_expand
+                    }
+                ],
+                'location': 1
+            }
+
+            self.post(
+                self.URL,
+                payload,
+                expected_code=201,
+            )
+
+            self.item_1.refresh_from_db()
+            total_expanded = sum(attempts[:i + 1])
+            puts(colored.red(f'  So far {total_expanded} have been expanded ({i}, {to_expand}, {attempts[:i + 1]})'))
+
+            # Stock quantity should have decreased!
+            self.assertEqual(
+                self.item_1.quantity,
+                n_packs - total_expanded
+            )
+
+            # Each sub_part should now have stock
+            for (sub_part, count) in zip(
+                self.sub_parts, self.sub_quants
+            ):
+                self.assertEqual(
+                    StockItem.objects.filter(part=sub_part).count(),
+                    i + 1
+                )
+                self.assertEqual(
+                    sub_part.total_stock,
+                    count * total_expanded
+                )
+
+    def test_valid_expand_multiple(self):
+        """Test a valid expansion of multiple stock items."""
+        # Increase stock to the pack with no stock
+        self.item_1.updateQuantity(100)
+        self.item_2.updateQuantity(3)
+
+        payload = {
+            'items': [
+                {
+                    'pk': self.item_1.pk,
+                    'quantity': 3
+                },
+                {
+                    'pk': self.item_2.pk,
+                    'quantity': 2
+                }
+            ],
+            'location': 1
+        }
+
+        self.post(
+            self.URL,
+            payload,
+            expected_code=201,
+        )
+
+        self.item_1.refresh_from_db()
+        self.item_2.refresh_from_db()
+        self.E.save()
+        self.E.refresh_from_db()
+
+        self.assertEqual(self.item_1.quantity, 97)
+        self.assertEqual(self.item_2.quantity, 1)
+
+        puts(colored.red(f'Total stock for E: {self.E.total_stock}'))
+        puts(colored.yellow(f'Should be {2 * self.E_quant} ({self.E_quant})'))
+        self.assertEqual(self.E.total_stock, 2 * self.E_quant)
+
+        self.assertEqual(
+            self.sub_parts[0].total_stock,
+            (3 + 2) * self.sub_quants[0]
+        )
 
 
 class StockMetadataAPITest(InvenTreeAPITestCase):

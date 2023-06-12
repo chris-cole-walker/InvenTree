@@ -1719,6 +1719,113 @@ class StockItem(InvenTreeBarcodeMixin, InvenTreeNotesMixin, MetadataMixin, commo
 
         return True
 
+    def can_expand(self, raise_error=False, **kwargs):
+        """Check if this stock item can be expanded into stock items for its BOM."""
+
+        try:
+            if self.sales_order:
+                raise ValidationError(_('Stock item has been assigned to a sales order'))
+
+            if self.belongs_to:
+                raise ValidationError(_('Stock item is installed in another item'))
+
+            if self.installed_item_count() > 0:
+                raise ValidationError(_('Stock item contains other items'))
+
+            if self.customer:
+                raise ValidationError(_('Stock item has been assigned to a customer'))
+
+            if self.is_building:
+                raise ValidationError(_('Stock item is currently in production'))
+
+            if self.serialized:
+                raise ValidationError(_("Serialized stock cannot be expanded"))
+
+        except ValidationError as e:
+            if raise_error:
+                raise e
+            else:
+                return False
+
+        return True
+
+    @transaction.atomic
+    def expand(self, location, notes, user, **kwargs):
+        """Expand part to all parts on BOM.
+
+        Args:
+            location: Destination location (cannot be null)
+            notes: User notes
+            user: Who is performing the move
+            kwargs:
+                quantity: If provided, override the quantity (default = total stock quantity)
+        """
+        try:
+            quantity = Decimal(kwargs.get('quantity', self.quantity))
+        except InvalidOperation:
+            return False
+
+        if not self.in_stock:
+            raise ValidationError(_("StockItem cannot be expanded as it is not in stock"))
+
+        if not self.part.assembly:
+            raise ValidationError(_("StockItem cannot be expanded as it is not an assembly"))
+
+        if self.part.bom_count <= 0:
+            raise ValidationError(_("StockItem cannot be expanded as it has no BOM items"))
+
+        if quantity <= 0:
+            return False
+
+        if location is None:
+            # TODO - Raise appropriate error (cannot move to blank location)
+            return False
+
+        purchase_price = self.purchase_price
+
+        stock_expand = {}
+
+        for part in self.part.get_bom_items():
+            stock_expand[part.sub_part] = {
+                'name': part.sub_part.name,
+                'quant': part.quantity
+            }
+
+        if purchase_price is not None:
+            num_parts = sum(
+                [e['quant'] for e in stock_expand.values()]
+            )
+            purchase_price /= num_parts
+
+        for part_to_stock, meta in stock_expand.items():
+            new_stock = StockItem.objects.get(pk=self.pk)
+
+            new_stock.pk = None
+            new_stock.build = None
+
+            new_stock.parent = self
+            new_stock.part = part_to_stock
+            new_stock.quantity = meta['quant'] * quantity
+            new_stock.location = location
+
+            new_stock.save()
+
+            new_stock.add_tracking_entry(
+                StockHistoryCode.STOCK_FROM_EXPAND,
+                user,
+                notes=notes,
+                deltas={'location': location.pk}
+            )
+
+        self.take_stock(
+            quantity,
+            user,
+            notes=notes,
+            code=StockHistoryCode.STOCK_EXPAND
+        )
+
+        return True
+
     @transaction.atomic
     def updateQuantity(self, quantity):
         """Update stock quantity for this item.

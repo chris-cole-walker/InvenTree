@@ -100,6 +100,8 @@ class StockHistoryCode(StatusCode):
     STOCK_COUNT = 10, _('Stock counted')
     STOCK_ADD = 11, _('Stock manually added')
     STOCK_REMOVE = 12, _('Stock manually removed')
+    STOCK_EXPAND = 13, _('Stock manually expanded')
+    STOCK_FROM_EXPAND = 14, _('Stock from manual expansion')
 
     # Location operations
     STOCK_MOVE = 20, _('Location changed')
