@@ -78,7 +78,7 @@
     loadStockTrackingTable,
     loadTableFilters,
     mergeStockItems,
-    expandStockItems,
+    disassembleStockItems,
     removeStockRow,
     serializeStockItem,
     stockItemFields,
@@ -969,191 +969,6 @@ function mergeStockItems(items, options={}) {
 }
 
 
-// /**
-//  * Expand multiple stock items together
-//  */
-// function expandStockItems(items, options = {}) {
-
-//     // Generate HTML content for the form
-//     var html = `
-//     <div class='alert alert-block alert-danger'>
-//     <h5>{% trans "Warning: Expand operation cannot be reversed" %}</h5>
-//     <strong>{% trans "Some information will be lost when merging stock items" %}:</strong>
-//     <ul>
-//         <li>{% trans "Stock transaction history will be lost for expanded items" %}</li>
-//         <li>{% trans "Supplier part information will lost for expanded items" %}</li>
-//         <li>{% trans "Purchase price will be distributed across the new stock" %}</li>
-//     </ul>
-//     </div>
-//     `;
-
-//     html += `
-//     <table class='table table-striped table-condensed' id='stock-merge-table'>
-//     <thead>
-//         <tr>
-//             <th>{% trans "Part" %}</th>
-//             <th>{% trans "Stock Item" %}</th>
-//             <th>{% trans "Location" %}</th>
-//             <th></th>
-//         </tr>
-//     </thead>
-//     <tbody>
-//     `;
-
-//     // Keep track of how many "locations" there are
-//     var locations = [];
-
-//     for (var idx = 0; idx < items.length; idx++) {
-//         var item = items[idx];
-
-//         var pk = item.pk;
-
-//         if (item.location && !locations.includes(item.location)) {
-//             locations.push(item.location);
-//         }
-
-//         var part = item.part_detail;
-//         let location_detail = locationDetail(item, false);
-
-//         var thumbnail = thumbnailImage(part.thumbnail || part.image);
-
-//         var quantity = '';
-
-//         if (item.serial && item.quantity == 1) {
-//             quantity = `{% trans "Serial" %}: ${item.serial}`;
-//         } else {
-//             quantity = `{% trans "Quantity" %}: ${item.quantity}`;
-//         }
-
-//         quantity += stockStatusDisplay(item.status, { classes: 'float-right' });
-
-//         let buttons = wrapButtons(
-//             makeIconButton(
-//                 'fa-times icon-red',
-//                 'button-stock-item-remove',
-//                 pk,
-//                 '{% trans "Remove row" %}',
-//             )
-//         );
-
-//         html += `
-//         <tr id='stock_item_${pk}' class='stock-item-row'>
-//             <td id='part_${pk}'>${thumbnail} ${part.full_name}</td>
-//             <td id='stock_${pk}'>
-//                 <div id='div_id_items_item_${pk}'>
-//                     ${quantity}
-//                     <div id='errors-items_item_${pk}'></div>
-//                 </div>
-//             </td>
-//             <td id='location_${pk}'>${location_detail}</td>
-//             <td id='buttons_${pk}'>${buttons}</td>
-//         </tr>
-//         `;
-//     }
-
-//     html += '</tbody></table>';
-
-//     var location = locations.length == 1 ? locations[0] : null;
-
-//     constructForm('{% url "api-stock-expand" %}', {
-//         method: 'POST',
-//         preFormContent: html,
-//         fields: {
-//             location: {
-//                 value: location,
-//                 icon: 'fa-sitemap',
-//                 filters: {
-//                     structural: false,
-//                 }
-//             },
-//             notes: {
-//                 icon: 'fa-sticky-note',
-//             },
-//             // allow_mismatched_suppliers: {},
-//             // allow_mismatched_status: {},
-//         },
-//         confirm: true,
-//         confirmMessage: '{% trans "Confirm stock item expansion" %}',
-//         title: '{% trans "Expand Stock Items" %}',
-//         afterRender: function (fields, opts) {
-//             // Add button callbacks to remove rows
-//             $(opts.modal).find('.button-stock-item-remove').click(function () {
-//                 var pk = $(this).attr('pk');
-
-//                 $(opts.modal).find(`#stock_item_${pk}`).remove();
-//             });
-//         },
-//         onSubmit: function (fields, opts) {
-
-//             // Extract data elements from the form
-//             var data = {
-//                 items: [],
-//             };
-
-//             var item_pk_values = [];
-
-//             items.forEach(function (item) {
-//                 var pk = item.pk;
-
-//                 // Does the row still exist in the form?
-//                 var row = $(opts.modal).find(`#stock_item_${pk}`);
-
-//                 if (row.exists()) {
-//                     item_pk_values.push(pk);
-
-//                     data.items.push({
-//                         item: pk,
-//                     });
-//                 }
-//             });
-
-//             var extra_fields = [
-//                 'location',
-//                 'notes',
-//                 // 'allow_mismatched_suppliers',
-//                 // 'allow_mismatched_status',
-//             ];
-
-//             extra_fields.forEach(function (field) {
-//                 data[field] = getFormFieldValue(field, fields[field], opts);
-//             });
-
-//             opts.nested = {
-//                 'items': item_pk_values
-//             };
-
-//             // Submit the form data
-//             inventreePut(
-//                 '{% url "api-stock-expand" %}',
-//                 data,
-//                 {
-//                     method: 'POST',
-//                     success: function (response) {
-//                         $(opts.modal).modal('hide');
-
-//                         if (options.success) {
-//                             options.success(response);
-//                         }
-//                     },
-//                     error: function (xhr) {
-//                         switch (xhr.status) {
-//                             case 400:
-//                                 handleFormErrors(xhr.responseJSON, fields, opts);
-//                                 break;
-//                             default:
-//                                 $(opts.modal).modal('hide');
-//                                 showApiError(xhr, opts.url);
-//                                 break;
-//                         }
-//                     }
-//                 }
-//             );
-//         }
-//     });
-// }
-
-
-
 /**
  * Perform stock adjustments
  */
@@ -1191,11 +1006,11 @@ function adjustStock(action, items, options={}) {
         actionTitle = '{% trans "Add" %}';
         url = '{% url "api-stock-add" %}';
         break;
-    case 'expand':
-        formTitle = '{% trans "Expand Stock" %}';
-        actionTitle = '{% trans "Expand" %}';
+    case 'disassemble':
+        formTitle = '{% trans "Disassemble Stock" %}';
+        actionTitle = '{% trans "Disassemble" %}';
         specifyLocation = true;
-        url = '{% url "api-stock-expand" %}';
+        url = '{% url "api-stock-disassemble" %}';
         break;
     case 'delete':
         formTitle = '{% trans "Delete Stock" %}';
@@ -1255,7 +1070,7 @@ function adjustStock(action, items, options={}) {
             minValue = 0;
             value = item.quantity;
             break;
-        case 'expand':
+        case 'disassemble':
             minValue = 0;
             maxValue = item.quantity;
             value = item.quantity;
@@ -2444,19 +2259,8 @@ function loadStockTable(table, options) {
         });
     });
 
-    $('#multi-item-expand').click(function () {
-        stockAdjustment('expand');
-        // var items = getTableData(table);
-
-        // expandStockItems(items, {
-        //     success: function (response) {
-        //         $(table).bootstrapTable('refresh');
-
-        //         showMessage('{% trans "Expand stock items" %}', {
-        //             style: 'success',
-        //         });
-        //     }
-        // });
+    $('#multi-item-disassemble').click(function () {
+        stockAdjustment('disassemble');
     });
 
 

@@ -10,7 +10,6 @@ from django.core.exceptions import ValidationError
 from django.urls import reverse
 
 import tablib
-from clint.textui import colored, indent, puts
 from djmoney.money import Money
 from rest_framework import status
 
@@ -1696,10 +1695,10 @@ class StockMergeTest(StockAPITestCase):
         self.assertEqual(StockItem.objects.filter(part=self.part).count(), n - 2)
 
 
-class StockExpandTest(StockAPITestCase):
-    """Unit tests for expanding stock items via the API."""
+class StockDisassembleTest(StockAPITestCase):
+    """Unit tests for disassembling stock items via the API."""
 
-    URL = reverse('api-stock-expand')
+    URL = reverse('api-stock-disassemble')
 
     @classmethod
     def setUpTestData(cls):
@@ -1722,7 +1721,7 @@ class StockExpandTest(StockAPITestCase):
         cls.sub_parts = []
         sub_size = ['A', 'B', 'C', 'D']
         cls.sub_quants = [20, 10, 40, 100]
-        puts(colored.yellow('creating sub parts'))
+
         for size, quant in zip(sub_size, cls.sub_quants):
             sub_part = Part.objects.create(
                 name=size,
@@ -1730,8 +1729,6 @@ class StockExpandTest(StockAPITestCase):
             )
             cls.sub_parts.append(sub_part)
             sub_part.save()
-            with indent(2):
-                puts(colored.red(f'Created {sub_part.name} with a quantity of {quant}'))
             b = part.models.BomItem(
                 part=cls.part_1,
                 sub_part=sub_part,
@@ -1761,11 +1758,6 @@ class StockExpandTest(StockAPITestCase):
         cls.part_1.refresh_from_db()
         cls.part_2.refresh_from_db()
 
-        puts(colored.yellow('Checking BOM was created.'))
-        with indent(2):
-            puts(colored.yellow(f'{cls.part_1.bom_count} item(s) in BOM for {cls.part_1}'))
-            puts(colored.yellow(f'{cls.part_2.bom_count} item(s) in BOM for {cls.part_2}'))
-
         cls.part_3 = Part.objects.create(
             name='Not an Assembly',
             description='A part that is not an assembly',
@@ -1788,6 +1780,7 @@ class StockExpandTest(StockAPITestCase):
         cls.item_2 = StockItem.objects.create(
             part=cls.part_2,
             quantity=0,
+            purchase_price=10
         )
 
         cls.item_3 = StockItem.objects.create(
@@ -1853,7 +1846,7 @@ class StockExpandTest(StockAPITestCase):
         ).data
 
         self.assertIn(
-            'Only assemblies can be expanded', str(data)
+            'Only assemblies can be disassembled', str(data)
         )
 
         # Post an assembly with no BOM items
@@ -1870,7 +1863,7 @@ class StockExpandTest(StockAPITestCase):
         ).data
 
         self.assertIn(
-            'At least one part must be added to the BOM for expansion',
+            'At least one part must be added to the BOM for disassembly',
             str(data)
         )
 
@@ -1885,16 +1878,15 @@ class StockExpandTest(StockAPITestCase):
         ).data
 
         self.assertIn(
-            'StockItem cannot be expanded as it is not in stock',
+            'StockItem cannot be disassembled as it is not in stock',
             str(data)
         )
 
-    def test_valid_expand_single(self):
+    def test_valid_disassemble_single(self):
         """Test a valid expansion one stock item."""
 
         # First, verify stock levels of sub_parts is zero
         n_packs = self.part_1.total_stock
-        puts(colored.yellow(f'There are initially {n_packs}'))
 
         for sub_part in self.sub_parts:
             n = sub_part.total_stock
@@ -1918,12 +1910,12 @@ class StockExpandTest(StockAPITestCase):
 
         # Check expansion of one or more stock items
         attempts = [1, 3, 5]
-        for i, to_expand in enumerate(attempts):
+        for i, to_disassemble in enumerate(attempts):
             payload = {
                 'items': [
                     {
                         'pk': self.item_1.pk,
-                        'quantity': to_expand
+                        'quantity': to_disassemble
                     }
                 ],
                 'location': 1
@@ -1936,13 +1928,12 @@ class StockExpandTest(StockAPITestCase):
             )
 
             self.item_1.refresh_from_db()
-            total_expanded = sum(attempts[:i + 1])
-            puts(colored.red(f'  So far {total_expanded} have been expanded ({i}, {to_expand}, {attempts[:i + 1]})'))
+            total_disassembled = sum(attempts[:i + 1])
 
             # Stock quantity should have decreased!
             self.assertEqual(
                 self.item_1.quantity,
-                n_packs - total_expanded
+                n_packs - total_disassembled
             )
 
             # Each sub_part should now have stock
@@ -1955,10 +1946,10 @@ class StockExpandTest(StockAPITestCase):
                 )
                 self.assertEqual(
                     sub_part.total_stock,
-                    count * total_expanded
+                    count * total_disassembled
                 )
 
-    def test_valid_expand_multiple(self):
+    def test_valid_disassemble_multiple(self):
         """Test a valid expansion of multiple stock items."""
         # Increase stock to the pack with no stock
         self.item_1.updateQuantity(100)
@@ -1992,9 +1983,13 @@ class StockExpandTest(StockAPITestCase):
         self.assertEqual(self.item_1.quantity, 97)
         self.assertEqual(self.item_2.quantity, 1)
 
-        puts(colored.red(f'Total stock for E: {self.E.total_stock}'))
-        puts(colored.yellow(f'Should be {2 * self.E_quant} ({self.E_quant})'))
         self.assertEqual(self.E.total_stock, 2 * self.E_quant)
+        price_check = self.E.stock_entries()[0]
+        self.assertAlmostEqual(
+            price_check.purchase_price,
+            Money(10 / 30, 'USD'),
+            delta=Money(.001, 'USD')
+        )
 
         self.assertEqual(
             self.sub_parts[0].total_stock,

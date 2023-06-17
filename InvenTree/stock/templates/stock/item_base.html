@@ -81,7 +81,7 @@
             {% if not item.customer %}
             <li><a class='dropdown-item' href='#' id='stock-add' title='{% trans "Add stock" %}'><span class='fas fa-plus-circle icon-green'></span> {% trans "Add stock" %}</a></li>
             {% if item.part.assembly %}
-            <li><a class='dropdown-item' href='#' id='stock-expand' title='{% trans "Expand stock" %}'><span class='fas fa-object-ungroup icon-orange'></span> {% trans "Expand stock" %}</a></li>
+            <li><a class='dropdown-item' href='#' id='stock-disassemble' title='{% trans "Disassemble stock" %}'><span class='fas fa-object-ungroup icon-orange'></span> {% trans "disassemble stock" %}</a></li>
             {% endif %}
             <li><a class='dropdown-item' href='#' id='stock-remove' title='{% trans "Remove stock" %}'><span class='fas fa-minus-circle icon-red'></span> {% trans "Remove stock" %}</a></li>
             {% endif %}
@@ -692,8 +692,8 @@ $('#stock-remove').click(function() {
 });
 
 {% if item.part.assembly %}
-$("#stock-expand").click(function() {
-itemAdjust('expand');
+$("#stock-disassemble").click(function() {
+itemAdjust('disassemble');
 });
 {% endif %}
 

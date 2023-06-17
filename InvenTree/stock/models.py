@@ -18,6 +18,7 @@ from django.dispatch import receiver
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
+from clint.textui import colored, puts
 from jinja2 import Template
 from mptt.managers import TreeManager
 from mptt.models import MPTTModel, TreeForeignKey
@@ -1719,8 +1720,8 @@ class StockItem(InvenTreeBarcodeMixin, InvenTreeNotesMixin, MetadataMixin, commo
 
         return True
 
-    def can_expand(self, raise_error=False, **kwargs):
-        """Check if this stock item can be expanded into stock items for its BOM."""
+    def can_disassemble(self, raise_error=False, **kwargs):
+        """Check if this stock item can be disassembled into stock items for its BOM."""
 
         try:
             if self.sales_order:
@@ -1739,7 +1740,7 @@ class StockItem(InvenTreeBarcodeMixin, InvenTreeNotesMixin, MetadataMixin, commo
                 raise ValidationError(_('Stock item is currently in production'))
 
             if self.serialized:
-                raise ValidationError(_("Serialized stock cannot be expanded"))
+                raise ValidationError(_("Serialized stock cannot be disassembled"))
 
         except ValidationError as e:
             if raise_error:
@@ -1750,8 +1751,8 @@ class StockItem(InvenTreeBarcodeMixin, InvenTreeNotesMixin, MetadataMixin, commo
         return True
 
     @transaction.atomic
-    def expand(self, location, notes, user, **kwargs):
-        """Expand part to all parts on BOM.
+    def disassemble(self, location, notes, user, **kwargs):
+        """Disassemble part to all parts on BOM.
 
         Args:
             location: Destination location (cannot be null)
@@ -1760,19 +1761,21 @@ class StockItem(InvenTreeBarcodeMixin, InvenTreeNotesMixin, MetadataMixin, commo
             kwargs:
                 quantity: If provided, override the quantity (default = total stock quantity)
         """
+        if not self.can_disassemble(self, **kwargs):
+            return
         try:
             quantity = Decimal(kwargs.get('quantity', self.quantity))
         except InvalidOperation:
             return False
 
         if not self.in_stock:
-            raise ValidationError(_("StockItem cannot be expanded as it is not in stock"))
+            raise ValidationError(_("StockItem cannot be disassembled as it is not in stock"))
 
         if not self.part.assembly:
-            raise ValidationError(_("StockItem cannot be expanded as it is not an assembly"))
+            raise ValidationError(_("StockItem cannot be disassembled as it is not an assembly"))
 
         if self.part.bom_count <= 0:
-            raise ValidationError(_("StockItem cannot be expanded as it has no BOM items"))
+            raise ValidationError(_("StockItem cannot be disassembled as it has no BOM items"))
 
         if quantity <= 0:
             return False
@@ -1783,21 +1786,26 @@ class StockItem(InvenTreeBarcodeMixin, InvenTreeNotesMixin, MetadataMixin, commo
 
         purchase_price = self.purchase_price
 
-        stock_expand = {}
+        bom_expand = {}
 
         for part in self.part.get_bom_items():
-            stock_expand[part.sub_part] = {
+            bom_expand[part.sub_part] = {
                 'name': part.sub_part.name,
                 'quant': part.quantity
             }
 
+        puts(colored.yellow(f'{dir(self)}'))
+        puts(colored.yellow(f'Before check: {self.purchase_price} {purchase_price}'))
         if purchase_price is not None:
+            puts(colored.blue('Setting up the split'))
             num_parts = sum(
-                [e['quant'] for e in stock_expand.values()]
+                [e['quant'] for e in bom_expand.values()]
             )
             purchase_price /= num_parts
 
-        for part_to_stock, meta in stock_expand.items():
+        puts(colored.green(f'After check: {self.purchase_price} {purchase_price}'))
+
+        for part_to_stock, meta in bom_expand.items():
             new_stock = StockItem.objects.get(pk=self.pk)
 
             new_stock.pk = None
@@ -1807,11 +1815,12 @@ class StockItem(InvenTreeBarcodeMixin, InvenTreeNotesMixin, MetadataMixin, commo
             new_stock.part = part_to_stock
             new_stock.quantity = meta['quant'] * quantity
             new_stock.location = location
+            new_stock.purchase_price = purchase_price
 
             new_stock.save()
 
             new_stock.add_tracking_entry(
-                StockHistoryCode.STOCK_FROM_EXPAND,
+                StockHistoryCode.STOCK_FROM_DISASSEMBLE,
                 user,
                 notes=notes,
                 deltas={'location': location.pk}
@@ -1821,7 +1830,7 @@ class StockItem(InvenTreeBarcodeMixin, InvenTreeNotesMixin, MetadataMixin, commo
             quantity,
             user,
             notes=notes,
-            code=StockHistoryCode.STOCK_EXPAND
+            code=StockHistoryCode.STOCK_DISASSEMBLE
         )
 
         return True

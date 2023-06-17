@@ -46,7 +46,7 @@ class StockDetailTest(StockViewTestCase):
 
         html = str(response.content)
 
-        act = "id=\\\'stock-expand\\\' title=\\\'Expand stock\\\'"
+        act = "id=\\\'stock-disassemble\\\' title=\\\'Disassemble stock\\\'"
         self.assertNotIn(act, html)
 
         # Give the user all the permissions

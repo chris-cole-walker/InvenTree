@@ -1198,8 +1198,8 @@ class StockTransferSerializer(StockAdjustmentSerializer):
                 )
 
 
-class StockExpandSerializer(StockAdjustmentSerializer):
-    """Serializer for expanding a stock item to stock item(s) based on a BOM."""
+class StockDisassembleSerializer(StockAdjustmentSerializer):
+    """Serializer for disassembling a stock item to stock item(s) based on a BOM."""
 
     class Meta:
         """Metaclass options."""
@@ -1220,7 +1220,7 @@ class StockExpandSerializer(StockAdjustmentSerializer):
     )
 
     def validate(self, data):
-        """Make sure items are provided and they can be expanded."""
+        """Make sure items are provided and they can be disassembled."""
         super().validate(data)
 
         items = data.get('items', [])
@@ -1228,17 +1228,17 @@ class StockExpandSerializer(StockAdjustmentSerializer):
         for item in items:
 
             if not item['pk'].part.assembly:
-                raise ValidationError(_("Only assemblies can be expanded"))
+                raise ValidationError(_("Only assemblies can be disassembled"))
 
             if item['pk'].part.bom_count == 0:
-                raise ValidationError(_("At least one part must be added to the BOM for expansion"))
+                raise ValidationError(_("At least one part must be added to the BOM for disassembly"))
 
-            item['pk'].can_expand(raise_error=True)
+            item['pk'].can_disassemble(raise_error=True)
 
         return data
 
     def save(self):
-        """Expand stock."""
+        """Disassemble stock."""
         request = self.context['request']
 
         data = self.validated_data
@@ -1253,7 +1253,7 @@ class StockExpandSerializer(StockAdjustmentSerializer):
                 stock_item = item['pk']
                 quantity = item['quantity']
 
-                stock_item.expand(
+                stock_item.disassemble(
                     location,
                     notes,
                     request.user,
