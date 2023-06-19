@@ -596,6 +596,25 @@ function itemAdjust(action) {
         }
     );
 }
+function itemDisassemble(action) {
+
+    inventreeGet(
+        '{% url "api-stock-detail" item.pk %}',
+        {
+            part_detail: true,
+            location_detail: true,
+        },
+        {
+            success: function(item) {
+                disassembleStock([item], {
+                    success: function() {
+                        location.reload();
+                    }
+                });
+            }
+        }
+    );
+}
 
 $('#stock-add').click(function() {
     itemAdjust('add');
@@ -693,7 +712,7 @@ $('#stock-remove').click(function() {
 
 {% if item.part.assembly %}
 $("#stock-disassemble").click(function() {
-itemAdjust('disassemble');
+    itemDisassemble();
 });
 {% endif %}
 
