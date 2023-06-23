@@ -962,7 +962,7 @@ class PartFilter(rest_filters.FilterSet):
 
     depleted_stock = rest_filters.BooleanFilter(label='Depleted Stock', method='filter_depleted_stock')
 
-    def filter_deployed_stock(self, queryset, name, value):
+    def filter_depleted_stock(self, queryset, name, value):
         """Filter the queryset based on whether the part is fully depleted of stock"""
 
         if str2bool(value):
@@ -1269,6 +1269,13 @@ class PartList(PartMixin, APIDownloadMixin, ListCreateAPI):
         'tags__name',
         'tags__slug',
     ]
+
+
+class PartChangeCategory(CreateAPI):
+    """API endpoint to change the location of multiple parts in bulk"""
+
+    serializer_class = part_serializers.PartSetCategorySerializer
+    queryset = Part.objects.none()
 
 
 class PartDetail(PartMixin, RetrieveUpdateDestroyAPI):
@@ -2019,6 +2026,8 @@ part_api_urls = [
         # Part detail endpoint
         re_path(r'^.*$', PartDetail.as_view(), name='api-part-detail'),
     ])),
+
+    re_path(r'^change_category/', PartChangeCategory.as_view(), name='api-part-change-category'),
 
     re_path(r'^.*$', PartList.as_view(), name='api-part-list'),
 ]

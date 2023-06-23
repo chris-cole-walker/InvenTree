@@ -30,7 +30,6 @@
     inventreePut,
     inventreeSave,
     launchModalForm,
-    linkButtonsToSelection,
     loadTableFilters,
     makeDeleteButton,
     makeEditButton,
@@ -1708,6 +1707,121 @@ function locationDetail(row, showLink=true) {
 }
 
 
+/*
+ * Construct a set of custom actions for the stock table
+ */
+function makeStockActions(table) {
+    let actions = [
+        {
+            label: 'add',
+            icon: 'fa-plus-circle icon-green',
+            title: '{% trans "Add stock" %}',
+            permission: 'stock.change',
+            callback: function(data) {
+                stockAdjustment('add', data, table);
+            }
+        },
+        {
+            label: 'remove',
+            icon: 'fa-minus-circle icon-red',
+            title: '{% trans "Remove stock" %}',
+            permission: 'stock.change',
+            callback: function(data) {
+                stockAdjustment('take', data, table);
+            },
+        },
+        {
+            label: 'stocktake',
+            icon: 'fa-check-circle icon-blue',
+            title: '{% trans "Count stock" %}',
+            permission: 'stock.change',
+            callback: function(data) {
+                stockAdjustment('count', data, table);
+            },
+        },
+        {
+            label: 'move',
+            icon: 'fa-exchange-alt icon-blue',
+            title: '{% trans "Transfer stock" %}',
+            permission: 'stock.change',
+            callback: function(data) {
+                stockAdjustment('move', data, table);
+            }
+        },
+        {
+            label: 'status',
+            icon: 'fa-info-circle icon-blue',
+            title: '{% trans "Change stock status" %}',
+            permission: 'stock.change',
+            callback: function(data) {
+                setStockStatus(data, {table: table});
+            },
+        },
+        {
+            label: 'merge',
+            icon: 'fa-object-group',
+            title: '{% trans "Merge stock" %}',
+            permission: 'stock.change',
+            callback: function(data) {
+                mergeStockItems(data, {
+                    success: function(response) {
+                        $(table).bootstrapTable('refresh');
+
+                        showMessage('{% trans "Merged stock items" %}', {
+                            style: 'success',
+                        });
+                    }
+                });
+            },
+        },
+        {
+            label: 'order',
+            icon: 'fa-shopping-cart',
+            title: '{% trans "Order stock" %}',
+            permission: 'stock.change',
+            callback: function(data) {
+                let parts = [];
+
+                data.forEach(function(item) {
+                    var part = item.part_detail;
+
+                    if (part) {
+                        parts.push(part);
+                    }
+                });
+
+                orderParts(parts, {});
+            },
+        },
+        {
+            label: 'assign',
+            icon: 'fa-user-tie',
+            title: '{% trans "Assign to customer" %}',
+            permission: 'stock.change',
+            callback: function(data) {
+                assignStockToCustomer(data, {
+                    success: function() {
+                        $(table).bootstrapTable('refresh');
+                    }
+                });
+            },
+        },
+        {
+            label: 'delete',
+            icon: 'fa-trash-alt icon-red',
+            title: '{% trans "Delete stock" %}',
+            permission: 'stock.delete',
+            callback: function(data) {
+                stockAdjustment('delete', data, table);
+            },
+        }
+    ];
+
+    return actions;
+
+}
+
+
 /* Load data into a stock table with adjustable options.
  * Fetches data (via AJAX) and loads into a bootstrap table.
  * Also links in default button callbacks.
@@ -1730,30 +1844,50 @@ function loadStockTable(table, options) {
 
     var params = options.params || {};
 
-    const filterTarget = options.filterTarget || '#filter-list-stock';
+    let filters = {};
 
-    const filterKey = options.filterKey || options.name || 'stock';
+    if (!options.disableFilters) {
 
-    let filters = loadTableFilters(filterKey, params);
+        const filterTarget = options.filterTarget || '#filter-list-stock';
+        const filterKey = options.filterKey || options.name || 'stock';
 
-    setupFilterList(filterKey, table, filterTarget, {
-        download: true,
-        report: {
-            url: '{% url "api-stockitem-testreport-list" %}',
-            key: 'item',
-        },
-        labels: {
-            url: '{% url "api-stockitem-label-list" %}',
-            key: 'item',
-        },
-        singular_name: '{% trans "stock item" %}',
-        plural_name: '{% trans "stock items" %}'
-    });
+        filters = loadTableFilters(filterKey, params);
 
-    // Override the default values, or add new ones
-    for (var key in params) {
-        filters[key] = params[key];
+        setupFilterList(filterKey, table, filterTarget, {
+            download: true,
+            report: {
+                url: '{% url "api-stockitem-testreport-list" %}',
+                key: 'item',
+            },
+            labels: {
+                url: '{% url "api-stockitem-label-list" %}',
+                key: 'item',
+            },
+            singular_name: '{% trans "stock item" %}',
+            plural_name: '{% trans "stock items" %}',
+            barcode_actions: [
+                {
+                    icon: 'fa-sitemap',
+                    label: 'scantolocation',
+                    title: '{% trans "Scan to location" %}',
+                    permission: 'stock.change',
+                    callback: function(items) {
+                        scanItemsIntoLocation(items);
+                    }
+                }
+            ],
+            custom_actions: [
+                {
+                    actions: makeStockActions(table),
+                    icon: 'fa-boxes',
+                    title: '{% trans "Stock Actions" %}',
+                    label: 'stock',
+                }
+            ]
+        });
     }
+
+    filters = Object.assign(filters, params);
 
     var col = null;
 
@@ -2399,35 +2533,9 @@ function loadStockTable(table, options) {
             items.push(item.pk);
         });
 
-        if (items.length == 0) {
-            showAlertDialog(
-                '{% trans "Select Stock Items" %}',
-                '{% trans "Select one or more stock items" %}'
-            );
-            return;
-        }
 
-        let html = `
-        <div class='alert alert-info alert-block>
-        {% trans "Selected stock items" %}: ${items.length}
-        </div>`;
 
-        constructForm('{% url "api-stock-change-status" %}', {
-            title: '{% trans "Change Stock Status" %}',
-            method: 'POST',
-            preFormContent: html,
-            fields: {
-                status: {},
-                note: {},
-            },
-            processBeforeUpload: function(data) {
-                data.items = items;
-                return data;
-            },
-            onSuccess: function() {
-                $(table).bootstrapTable('refresh');
-            }
-        });
+
     });
 }
 
@@ -2462,9 +2570,7 @@ function loadStockLocationTable(table, options) {
         plural_name: '{% trans "stock locations" %}',
     });
 
-    for (var key in params) {
-        filters[key] = params[key];
-    }
+    filters = Object.assign(filters, params);
 
     // Function to request sub-location items
     function requestSubItems(parent_pk) {
@@ -2932,10 +3038,6 @@ function loadStockTrackingTable(table, options) {
         url: options.url,
     });
 
-    if (options.buttons) {
-        linkButtonsToSelection(table, options.buttons);
-    }
-
     table.on('click', '.btn-entry-edit', function() {
         var button = $(this);
 
@@ -3147,6 +3249,29 @@ function installStockItem(stock_item_id, part_id, options={}) {
     );
 }
 
+
+// Perform the specified stock adjustment action against the selected items
+function stockAdjustment(action, items, table) {
+    adjustStock(action, items, {
+        success: function() {
+            $(table).bootstrapTable('refresh');
+        }
+    });
+}
+
+
+/*
+ * Set the status of the selected stock items
+ */
+function setStockStatus(items, options={}) {
+
+    if (items.length == 0) {
+        showAlertDialog(
+            '{% trans "Select Stock Items" %}',
+            '{% trans "Select one or more stock items" %}'
+        );
+        return;
+    }
 
 /*
  * Create a new form to order parts based on the list of provided parts.
@@ -3662,6 +3787,31 @@ function disassembleStock(stock_list, options = {}) {
                     }
                 }
             );
+    let id_values = [];
+
+    items.forEach(function(item) {
+        id_values.push(item.pk)
+    });
+
+    let html = `
+    <div class='alert alert-info alert-block>
+    {% trans "Selected stock items" %}: ${items.length}
+    </div>`;
+
+    constructForm('{% url "api-stock-change-status" %}', {
+        title: '{% trans "Change Stock Status" %}',
+        method: 'POST',
+        preFormContent: html,
+        fields: {
+            status: {},
+            note: {},
+        },
+        processBeforeUpload: function(data) {
+            data.items = items;
+            return data;
+        },
+        onSuccess: function() {
+            $(options.table).bootstrapTable('refresh');
         }
     });
 }
