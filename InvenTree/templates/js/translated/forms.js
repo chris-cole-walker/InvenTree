@@ -2470,7 +2470,11 @@ function constructInputOptions(name, classes, type, parameters, options={}) {
     case 'integer':
     case 'float':
     case 'decimal':
-        opts.push(`step='any'`);
+        if (parameters.step != null) {
+            opts.push(`step='${parameters.step}'`)
+        } else {
+            opts.push(`step='any'`);
+        }
         break;
     default:
         break;

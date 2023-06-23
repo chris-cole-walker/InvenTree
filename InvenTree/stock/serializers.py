@@ -1315,7 +1315,123 @@ class StockTransferSerializer(StockAdjustmentSerializer):
                 )
 
 
-class StockDisassembleSerializer(StockAdjustmentSerializer):
+class StockDisassembleBOMItemSerializer(serializers.Serializer):
+    """A simple serilaizer to load BOM items for disassembly"""
+    class Meta:
+        """Metaclass options."""
+
+        fields = [
+            'pk',
+            'quantity',
+            'location',
+            'status'
+        ]
+
+    pk = serializers.PrimaryKeyRelatedField(
+        queryset=part_models.Part.objects.filter(assembly=False),
+        many=False,
+        allow_null=False,
+        required=True,
+        label='part',
+        help_text=_('Part primary key value')
+    )
+
+    quantity = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=5,
+        min_value=0,
+        required=False
+    )
+
+    location = serializers.PrimaryKeyRelatedField(
+        queryset=StockLocation.objects.all(),
+        many=False,
+        required=False,
+        allow_null=True,
+        label=_('Location'),
+        help_text=_('Destination stock location'),
+    )
+
+    status = serializers.ChoiceField(
+        choices=InvenTree.status_codes.StockStatus.items(),
+        default=InvenTree.status_codes.StockStatus.OK.value,
+        required=False,
+        label=_('Status'),
+    )
+
+    def validate_item(self, item):
+        """Validate the given part is a component"""
+        if not item['pk'].component:
+            raise ValidationError(_('Part is not a component'))
+        return item
+
+
+class StockDisassemblyItemSerializer(serializers.Serializer):
+    """Serializer for a single StockItem within a stock adjument request.
+
+    Fields:
+        - pk: StockItem object
+        - quantity: Numerical quantity
+    """
+
+    class Meta:
+        """Metaclass options."""
+
+        fields = [
+            'pk',
+            'quantity',
+            'bom_total',
+            'bom_details',
+            'location'
+        ]
+
+    pk = serializers.PrimaryKeyRelatedField(
+        queryset=StockItem.objects.all(),
+        many=False,
+        allow_null=False,
+        required=True,
+        label='stock_item',
+        help_text=_('StockItem primary key value')
+    )
+
+    quantity = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=5,
+        min_value=0,
+        required=False
+    )
+
+    bom_total = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=5,
+        min_value=0,
+        required=False
+    )
+
+    bom_details = serializers.ListField(
+        child=StockDisassembleBOMItemSerializer(many=False, required=True),
+        allow_empty=True,
+        required=False,
+        min_length=1
+    )
+
+    location = serializers.PrimaryKeyRelatedField(
+        queryset=StockLocation.objects.all(),
+        many=False,
+        required=False,
+        allow_null=True,
+        label=_('Location'),
+        help_text=_('Destination stock location'),
+    )
+
+    def validate_item(self, item):
+        """Validate a stock item can be disassembled"""
+        item['pk'].can_disassemble(raise_error=True)
+
+        return item
+
+
+class StockDisassembleSerializer(StockDisassemblyItemSerializer):
     """Serializer for disassembling a stock item to stock item(s) based on a BOM."""
 
     class Meta:
@@ -1324,16 +1440,26 @@ class StockDisassembleSerializer(StockAdjustmentSerializer):
         fields = [
             'items',
             'notes',
-            'location',
+            'divide_purchase_price'
         ]
 
-    location = serializers.PrimaryKeyRelatedField(
-        queryset=StockLocation.objects.all(),
-        many=False,
+    items = StockDisassemblyItemSerializer(
+        many=True,
         required=True,
-        allow_null=False,
-        label=_('Location'),
-        help_text=_('Destination stock location'),
+    )
+
+    divide_purchase_price = serializers.BooleanField(
+        required=False,
+        default=False,
+        label=_('Divide purchase price'),
+        help_text=_('Divide the purchase price of stock amongst the new stock created during disassembly</br><small>(only applies to purchasable parts)</small>'),
+    )
+
+    notes = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        label=_('Notes'),
+        help_text=_('Stock disassembly notes'),
     )
 
     def validate(self, data):
@@ -1361,18 +1487,27 @@ class StockDisassembleSerializer(StockAdjustmentSerializer):
         data = self.validated_data
 
         items = data['items']
+
         notes = data.get('notes', '')
-        location = data['location']
+
+        divide_purchase_price = data.get('divide_purchase_price', False)
+        # location = data['location']
 
         with transaction.atomic():
             for item in items:
 
                 stock_item = item['pk']
                 quantity = item['quantity']
+                location = item['location']
+                bom_total = item['bom_total']
+                bom_details = item['bom_details']
 
                 stock_item.disassemble(
                     location,
                     notes,
                     request.user,
-                    quantity=quantity
+                    quantity=quantity,
+                    bom_total=bom_total,
+                    bom_details=bom_details,
+                    divide_purchase_price=divide_purchase_price
                 )

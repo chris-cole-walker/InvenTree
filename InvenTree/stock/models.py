@@ -18,7 +18,6 @@ from django.dispatch import receiver
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
-from clint.textui import colored, puts
 from jinja2 import Template
 from mptt.managers import TreeManager
 from mptt.models import MPTTModel, TreeForeignKey
@@ -1761,7 +1760,7 @@ class StockItem(InvenTreeBarcodeMixin, InvenTreeNotesMixin, MetadataMixin, commo
             kwargs:
                 quantity: If provided, override the quantity (default = total stock quantity)
         """
-        if not self.can_disassemble(self, **kwargs):
+        if not self.can_disassemble(**kwargs):
             return
         try:
             quantity = Decimal(kwargs.get('quantity', self.quantity))
@@ -1777,53 +1776,66 @@ class StockItem(InvenTreeBarcodeMixin, InvenTreeNotesMixin, MetadataMixin, commo
         if self.part.bom_count <= 0:
             raise ValidationError(_("StockItem cannot be disassembled as it has no BOM items"))
 
+        location = location or self.location
+
         if quantity <= 0:
             return False
 
-        if location is None:
-            # TODO - Raise appropriate error (cannot move to blank location)
-            return False
+        bom_details = kwargs.get('bom_details', [])
+        if bom_details and len(bom_details) != self.part.bom_count:
+            raise ValidationError(_("BOM details must be provided for each BOM item"))
+
+        bom_total = kwargs.get('bom_total', None)
+        divide_purchase_price = kwargs.get("divide_purchase_price", False)
 
         purchase_price = self.purchase_price
+        status = self.status
 
-        bom_expand = {}
+        if not bom_details:
+            for part in self.part.get_bom_items():
+                bom_details.push({
+                    'pk': part.sub_part.pk,
+                    # 'name': part.sub_part.name,
+                    'quantity': part.quantity * quantity,
+                    'location': location,
+                    'status': status
+                })
 
-        for part in self.part.get_bom_items():
-            bom_expand[part.sub_part] = {
-                'name': part.sub_part.name,
-                'quant': part.quantity
-            }
+        if bom_total is None:
+            bom_total = sum([b.quantity for b in bom_details])
 
-        puts(colored.yellow(f'{dir(self)}'))
-        puts(colored.yellow(f'Before check: {self.purchase_price} {purchase_price}'))
-        if purchase_price is not None:
-            puts(colored.blue('Setting up the split'))
-            num_parts = sum(
-                [e['quant'] for e in bom_expand.values()]
-            )
-            purchase_price /= num_parts
+        if purchase_price is not None and bom_total and divide_purchase_price:
+            purchase_price /= bom_total
+        else:
+            purchase_price = None
 
-        puts(colored.green(f'After check: {self.purchase_price} {purchase_price}'))
-
-        for part_to_stock, meta in bom_expand.items():
+        for part_to_stock in bom_details:
             new_stock = StockItem.objects.get(pk=self.pk)
 
             new_stock.pk = None
             new_stock.build = None
 
             new_stock.parent = self
-            new_stock.part = part_to_stock
-            new_stock.quantity = meta['quant'] * quantity
-            new_stock.location = location
+            new_stock.part = part_to_stock['pk']
+            new_stock.quantity = part_to_stock['quantity']
+            new_stock.location = part_to_stock['location']
+            new_stock.status = part_to_stock['status']
+
             new_stock.purchase_price = purchase_price
 
+            print('everything is updated')
             new_stock.save()
+            print('saved')
 
             new_stock.add_tracking_entry(
                 StockHistoryCode.STOCK_FROM_DISASSEMBLE,
                 user,
                 notes=notes,
-                deltas={'location': location.pk}
+                deltas={
+                    'location': new_stock.location.pk,
+                    'status': new_stock.status,
+                    'quantity': float(new_stock.quantity)
+                }
             )
 
         self.take_stock(
