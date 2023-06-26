@@ -1340,7 +1340,9 @@ class StockDisassembleBOMItemSerializer(serializers.Serializer):
         max_digits=15,
         decimal_places=5,
         min_value=0,
-        required=False
+        required=False,
+        label=_('Quantity'),
+        help_text=_('The quantity of the base stock item to disassemble.')
     )
 
     location = serializers.PrimaryKeyRelatedField(
@@ -1356,7 +1358,8 @@ class StockDisassembleBOMItemSerializer(serializers.Serializer):
         choices=InvenTree.status_codes.StockStatus.items(),
         default=InvenTree.status_codes.StockStatus.OK.value,
         required=False,
-        label=_('Status'),
+        label=_('status'),
+        help_text=_('Test')
     )
 
     def validate_item(self, item):
@@ -1398,21 +1401,29 @@ class StockDisassemblyItemSerializer(serializers.Serializer):
         max_digits=15,
         decimal_places=5,
         min_value=0,
-        required=False
+        required=False,
+        label='quantity',
+        help_text=_('The quantity of the base stock item to disassemble.')
     )
 
     bom_total = serializers.DecimalField(
         max_digits=15,
         decimal_places=5,
         min_value=0,
-        required=False
+        required=False,
+        label='bom_total',
+        help_text=_('The total number of items in a BOM.')
     )
 
     bom_details = serializers.ListField(
-        child=StockDisassembleBOMItemSerializer(many=False, required=True),
+        child=StockDisassembleBOMItemSerializer(
+            many=False, required=True
+        ),
         allow_empty=True,
         required=False,
-        min_length=1
+        min_length=1,
+        label=_('BOM item details'),
+        help_text=_('An array of parts that make up another parts BOM and the quntity, location, and status for their new stock items.')
     )
 
     location = serializers.PrimaryKeyRelatedField(

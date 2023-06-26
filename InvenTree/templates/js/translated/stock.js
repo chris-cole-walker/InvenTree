@@ -3273,6 +3273,35 @@ function setStockStatus(items, options={}) {
         return;
     }
 
+    let id_values = [];
+
+    items.forEach(function (item) {
+        id_values.push(item.pk)
+    });
+
+    let html = `
+    <div class='alert alert-info alert-block>
+    {% trans "Selected stock items" %}: ${items.length}
+    </div>`;
+
+    constructForm('{% url "api-stock-change-status" %}', {
+        title: '{% trans "Change Stock Status" %}',
+        method: 'POST',
+        preFormContent: html,
+        fields: {
+            status: {},
+            note: {},
+        },
+        processBeforeUpload: function (data) {
+            data.items = items;
+            return data;
+        },
+        onSuccess: function () {
+            $(options.table).bootstrapTable('refresh');
+        }
+    });
+}
+
 /*
  * Create a new form to order parts based on the list of provided parts.
  */
@@ -3787,31 +3816,6 @@ function disassembleStock(stock_list, options = {}) {
                     }
                 }
             );
-    let id_values = [];
-
-    items.forEach(function(item) {
-        id_values.push(item.pk)
-    });
-
-    let html = `
-    <div class='alert alert-info alert-block>
-    {% trans "Selected stock items" %}: ${items.length}
-    </div>`;
-
-    constructForm('{% url "api-stock-change-status" %}', {
-        title: '{% trans "Change Stock Status" %}',
-        method: 'POST',
-        preFormContent: html,
-        fields: {
-            status: {},
-            note: {},
-        },
-        processBeforeUpload: function(data) {
-            data.items = items;
-            return data;
-        },
-        onSuccess: function() {
-            $(options.table).bootstrapTable('refresh');
         }
     });
-}
+};
