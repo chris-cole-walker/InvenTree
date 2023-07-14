@@ -2764,7 +2764,7 @@ function loadStockLocationTable(table, options) {
                         } else {
                             html += `
                                 <a href='#' pk='${row.pk}' class='load-sub-location'>
-                                    <span class='fas fa-sync-alt' title='{% trans "Load Subloactions" %}'></span>
+                                    <span class='fas fa-sync-alt' title='{% trans "Load Sublocations" %}'></span>
                                 </a> `;
                         }
                     }
@@ -2955,7 +2955,7 @@ function loadStockTrackingTable(table, options) {
                 if (details.salesorder_detail) {
                     html += renderLink(
                         details.salesorder_detail.reference,
-                        `/order/sales-order/${details.salesorder}`
+                        `/order/sales-order/${details.salesorder}/`
                     );
                 } else {
                     html += `<em>{% trans "Sales Order no longer exists" %}</em>`;
