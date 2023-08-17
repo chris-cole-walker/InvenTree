@@ -90,10 +90,6 @@ apipatterns = [
         path('', include('dj_rest_auth.urls')),
     ])),
 
-    # Magic login URLs
-    path("email/generate/", csrf_exempt(GetSimpleLoginView().as_view()), name="sesame-generate",),
-    path("email/login/", LoginView.as_view(), name="sesame-login"),
-
     # Unknown endpoint
     re_path(r'^.*$', NotFoundView.as_view(), name='api-404'),
 ]

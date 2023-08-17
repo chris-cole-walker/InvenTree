@@ -606,9 +606,6 @@ DATABASES = {
 REMOTE_LOGIN = get_boolean_setting('INVENTREE_REMOTE_LOGIN', 'remote_login_enabled', False)
 REMOTE_LOGIN_HEADER = get_setting('INVENTREE_REMOTE_LOGIN_HEADER', 'remote_login_header', 'REMOTE_USER')
 
-# Magic login django-sesame
-SESAME_MAX_AGE = 300
-# LOGIN_REDIRECT_URL = "/platform/logged-in/"
 LOGIN_REDIRECT_URL = "/index/"
 
 # sentry.io integration for error reporting
@@ -778,7 +775,6 @@ LANGUAGES = [
     ('tr', _('Turkish')),
     ('vi', _('Vietnamese')),
     ('zh-hans', _('Chinese (Simplified)')),
-    ('zh-hant', _('Chinese (Traditional)')),
 ]
 
 # Testing interface translations
